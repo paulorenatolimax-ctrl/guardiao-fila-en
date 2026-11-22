@@ -16,6 +16,7 @@ for nome in sorted(rel):
 novos=0
 for cid,pasta in cand:
     P=os.path.join(pasta,'POSTAR')
+    if cid in ('EN04_lennon_son',): continue  # já no ar desde 21/11
     if cid in ja or not os.path.isfile(os.path.join(P,'10.jpg')): continue
     leg=open(os.path.join(P,'caption.txt'),encoding='utf-8').read().strip()
     slides=[]
