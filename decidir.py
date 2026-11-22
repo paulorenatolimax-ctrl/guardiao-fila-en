@@ -20,10 +20,13 @@ Uso no workflow:  python3 decidir.py reel|carrossel|teste   -> grava deve_public
 import json, os, sys
 from datetime import date, datetime, timedelta, timezone
 
+# CONTA EM INGLÊS. 22/11/2026 11h20 (Paulo): "É 5 por dia. Pode começar com 3 na primeira semana, depois vai aumentar para 5 ou 6."
+# 22/11 a 28/11: 3 por dia (9h, 13h, 18h BRT). De 29/11 em diante: 5 por dia (8h, 11h, 14h, 17h, 20h BRT).
+_SEMANA1 = ([9, 13, 18], timedelta(minutes=90), 3)
+_DEPOIS = ([8, 11, 14, 17, 20], timedelta(minutes=90), 5)
+_g = _SEMANA1 if (datetime.now(timezone.utc) - timedelta(hours=3)).date() < date(2026, 11, 29) else _DEPOIS
 TIPOS = {
-    # CONTA EM INGLÊS. 22/11/2026 (Paulo): tudo pré-aprovado, automação completa. 1 por dia às 13h BRT (11h de Nova York).
-    # Para mudar o ritmo: troque a lista de horários e o máximo. Ex.: [9, 13, 18] e 3.
-    "carrossel": ("carrosseis.json", "carrosseis", [13], timedelta(minutes=90), 1),
+    "carrossel": ("carrosseis.json", "carrosseis", _g[0], _g[1], _g[2]),
 }
 ESPECIAIS = {}
 INICIO_DIA = 7  # nada sai antes das 7h BRT (e o cron vai até 23h59 BRT)
