@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""CONTA EM INGLÊS (@prof.paulolima.en). Publica pela grade do decidir.py, com recuperação de horário perdido (ver decidir.py, 03/10/2026).
+Fila própria: carrosseis.json (slides JPEG no release "videos"). A API não põe música."""
+import json, os, sys, time, urllib.parse, urllib.request
+from datetime import datetime, timedelta, timezone
+LIMITE_LEGENDA = 2200  # Instagram recusa acima disso
+def legenda_ok(t):
+    # acima do limite: tira hashtags do fim, uma a uma; nunca corta o texto nem as Fontes
+    import re
+    while len(t) > LIMITE_LEGENDA and re.search(r"\s#\S+\s*$", t): t = re.sub(r"\s*#\S+\s*$", "", t)
+    # 17/10/2026: em vez de travar o post, enxuga o rodapé: primeiro os créditos de imagem, depois as últimas Fontes
+    if len(t) > LIMITE_LEGENDA:
+        t = re.sub(r"\n+(Imagens|Créditos de imagem)[^\n]*", "", t)  # 01/11: pega "Imagens (Wikimedia...)" e "Créditos de imagem"
+    while len(t) > LIMITE_LEGENDA and re.search(r"\nFontes:.*\n• [^\n]*$", t, re.S):
+        t = re.sub(r"\n• [^\n]*$", "", t)
+    if len(t) > LIMITE_LEGENDA: print("legenda longa demais mesmo enxugando rodapé:", len(t)); sys.exit(1)
+    print("legenda final:", len(t), "caracteres")
+    return t
+if not os.environ.get("IG_TOKEN") or not os.environ.get("IG_USER_ID"): print("sem IG_TOKEN/IG_USER_ID da conta em inglês: nada a fazer"); sys.exit(0)
+API = "https://graph.instagram.com/v21.0"; TOK = os.environ["IG_TOKEN"]; UID = os.environ["IG_USER_ID"]
+REPO = os.environ.get("GITHUB_REPOSITORY", "paulorenatolimax-ctrl/guardiao-fila-en"); TAG = "videos"
+def chamar(url, dados=None):
+    req = urllib.request.Request(url, data=urllib.parse.urlencode(dados).encode() if dados else None)
+    try: return json.load(urllib.request.urlopen(req, timeout=90))
+    except urllib.error.HTTPError as e: print("ERRO:", e.code, e.read().decode()[:400]); raise
+brt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=3)
+fila = json.load(open("carrosseis.json"))
+# 03/10/2026: regra de recuperação (catch-up) centralizada no decidir.py
+from decidir import decidir, proximo_valido
+forcar = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" and os.environ.get("FORCAR", "false") == "true"
+ok, motivo = decidir("carrossel", brt, fila["carrosseis"], forcar); print(motivo)
+if not ok: sys.exit(0)
+c, pulos = proximo_valido(fila["carrosseis"])  # trava: carrossel com mais de 10 slides nunca é tentado
+for m in pulos: print(m)
+if not c: print("fila de carrosséis vazia (ou só itens inválidos)"); sys.exit(0)
+print("→ carrossel", c["id"], c["titulo"])
+from carrossel_midia import criar_filhos  # 17/10/2026: aceita slides .mp4 (filho VIDEO + espera FINISHED)
+try: filhos = criar_filhos(c["slides"], chamar, API, UID, TOK, REPO, TAG)
+except (RuntimeError, urllib.error.HTTPError, KeyError) as e:
+    if not c.get("fallback_slides"): print("filho de vídeo falhou:", e); sys.exit(1)
+    print("VÍDEO FALHOU → publicando a versão só imagens (fallback_slides):", e)
+    c["fallback_usado"] = str(e)[:200]; c["legenda"] = c.get("legenda_fallback") or c["legenda"]
+    filhos = criar_filhos(c["fallback_slides"], chamar, API, UID, TOK, REPO, TAG)
+# 01/11/2026 (Paulo): todo carrossel oferece a Trilha. Link não clica em legenda/comentário,
+# então o caminho é palavra -> DM automática (palavras.py). Bloco no fim do 1º parágrafo da legenda.
+OFERTA_COMENT = ""  # conta em inglês: sem comentário de oferta
+OFERTA_LEG = ""  # 20/11/2026 (Paulo): oferta FORA da legenda (Fable: x0,44-0,62 no alcance). Antigo: "📚 Trilha do Guardião: 10 minutos por dia para reconhecer o esquerdismo, o ateísmo e o relativismo quando eles aparecem. Comenta TRILHA que eu te mando o link no direct."  # 01/11 17h: substitui o 'trouxa'
+if OFERTA_LEG and "TRILHA" not in c["legenda"] and not c.get("sem_oferta"):  # 18/11: "sem_oferta": true desliga o bloco nesta peça
+    _p = c["legenda"].split("\n\n", 1)
+    c["legenda"] = _p[0] + "\n\n" + OFERTA_LEG + ("\n\n" + _p[1] if len(_p) > 1 else "")
+r = chamar(f"{API}/{UID}/media", {"media_type": "CAROUSEL", "children": ",".join(filhos), "caption": legenda_ok(c["legenda"]), "access_token": TOK})
+cid = r["id"]
+for _ in range(60):  # carrossel com vídeo demora mais (17/10/2026)
+    s = chamar(f"{API}/{cid}?fields=status_code&access_token={TOK}")
+    if s.get("status_code") == "FINISHED": break
+    if s.get("status_code") == "ERROR": print("container com erro", s); sys.exit(1)
+    time.sleep(5)
+if os.environ.get("SEM_PUBLICAR") == "1":  # 18/10/2026: teste de contêiner; não chama media_publish
+    print("SEM_PUBLICAR=1: contêiner CAROUSEL", cid, "FINISHED; nada publicado"); sys.exit(0)
+p = chamar(f"{API}/{UID}/media_publish", {"creation_id": cid, "access_token": TOK})
+c["publicado"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"); c["media_id"] = p["id"]
+json.dump(fila, open("carrosseis.json", "w"), ensure_ascii=False, indent=2)
+print("  PUBLICADO CARROSSEL NO INSTAGRAM:", p["id"])
+try:  # 01/11/2026: 1º comentário do próprio perfil com a oferta (fixar à mão no app, a API não fixa)
+    if OFERTA_COMENT and not c.get("sem_oferta"):
+        chamar(f"{API}/{p['id']}/comments", {"message": OFERTA_COMENT + " 💙", "access_token": TOK})
+        print("  comentário da oferta postado")
+except Exception as e:
+    print("comentário da oferta ignorado:", type(e).__name__)
+try:  # aviso no WhatsApp para pôr a música; nunca pode quebrar a publicação
+    from avisar import avisar_publicado
+    link = chamar(f"{API}/{p['id']}?fields=permalink&access_token={TOK}").get("permalink", "https://www.instagram.com/")
+    avisar_publicado(c["titulo"], link)
+except Exception as e:
+    print("aviso WhatsApp ignorado:", type(e).__name__)
