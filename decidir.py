@@ -22,8 +22,8 @@ from datetime import date, datetime, timedelta, timezone
 
 # CONTA EM INGLÊS. 22/11/2026 11h20 (Paulo): "É 5 por dia. Pode começar com 3 na primeira semana, depois vai aumentar para 5 ou 6."
 # 22/11 a 28/11: 3 por dia (9h, 13h, 18h BRT). De 29/11 em diante: 5 por dia (8h, 11h, 14h, 17h, 20h BRT).
-_SEMANA1 = ([9, 13, 18], timedelta(minutes=90), 3)
-_DEPOIS = ([8, 11, 14, 17, 20], timedelta(minutes=90), 5)
+_SEMANA1 = ([9, 13, 18], timedelta(minutes=300), 3)
+_DEPOIS = ([8, 11, 14, 17, 20], timedelta(minutes=170), 5)
 _g = _SEMANA1 if (datetime.now(timezone.utc) - timedelta(hours=3)).date() < date(2026, 11, 29) else _DEPOIS
 TIPOS = {
     "carrossel": ("carrosseis.json", "carrosseis", _g[0], _g[1], _g[2]),
